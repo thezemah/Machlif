@@ -52,13 +52,18 @@ public enum LayoutConverter {
     }
 
     public static func convert(_ s: String) -> String {
+        convert(s, hebrewToEnglish: hebrewToEnglishMap, englishToHebrew: englishToHebrewMap)
+    }
+
+    public static func convert(
+        _ s: String,
+        hebrewToEnglish h2e: [Character: Character],
+        englishToHebrew e2h: [Character: Character]
+    ) -> String {
         switch detectDirection(s) {
-        case .hebrewToEnglish:
-            return apply(map: hebrewToEnglishMap, to: s)
-        case .englishToHebrew:
-            return apply(map: englishToHebrewMap, to: s)
-        case .none:
-            return s
+        case .hebrewToEnglish: return apply(map: h2e, to: s)
+        case .englishToHebrew: return apply(map: e2h, to: s)
+        case .none: return s
         }
     }
 
