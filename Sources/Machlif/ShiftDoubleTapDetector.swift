@@ -1,9 +1,11 @@
 import Cocoa
 import CoreGraphics
 
+@MainActor
 final class ShiftDoubleTapDetector {
 
     var onDoubleTap: (() -> Void)?
+    var onTapDisabled: (() -> Void)?
     var maxInterval: CFTimeInterval = 0.4
 
     private var eventTap: CFMachPort?
@@ -25,7 +27,9 @@ final class ShiftDoubleTapDetector {
         let callback: CGEventTapCallBack = { _, type, event, refcon in
             guard let refcon = refcon else { return Unmanaged.passUnretained(event) }
             let detector = Unmanaged<ShiftDoubleTapDetector>.fromOpaque(refcon).takeUnretainedValue()
-            detector.handle(type: type, event: event)
+            // The run loop source is added to the main run loop, so this callback
+            // always fires on the main thread — assumeIsolated is safe here.
+            MainActor.assumeIsolated { detector.handle(type: type, event: event) }
             return Unmanaged.passUnretained(event)
         }
 
@@ -61,6 +65,15 @@ final class ShiftDoubleTapDetector {
     }
 
     private func handle(type: CGEventType, event: CGEvent) {
+        // kCGEventTapDisabledByTimeout = 0xFFFFFFFE, kCGEventTapDisabledByUserInput = 0xFFFFFFFF
+        if type.rawValue >= 0xFFFFFFFE {
+            if let tap = eventTap {
+                CGEvent.tapEnable(tap: tap, enable: true)
+            }
+            onTapDisabled?()
+            return
+        }
+
         switch type {
         case .flagsChanged:
             let keyCode = event.getIntegerValueField(.keyboardEventKeycode)
@@ -77,9 +90,7 @@ final class ShiftDoubleTapDetector {
                     lastShiftDownAt = 0
                     shiftIsDown = nowDown
                     otherKeyPressedSinceLastShift = false
-                    DispatchQueue.main.async { [weak self] in
-                        self?.onDoubleTap?()
-                    }
+                    onDoubleTap?()
                     return
                 }
                 lastShiftDownAt = now

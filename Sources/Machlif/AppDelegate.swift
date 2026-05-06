@@ -1,44 +1,70 @@
 import Cocoa
 
+@MainActor
 final class AppDelegate: NSObject, NSApplicationDelegate {
 
     private var statusItem: NSStatusItem!
     private let detector = ShiftDoubleTapDetector()
     private var enabled = true
+    private var permissionPoller: Timer?
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         installStatusItem()
-        rebuildMenu()
 
         detector.onDoubleTap = { [weak self] in
-            guard let self = self, self.enabled else { return }
+            guard let self, self.enabled else { return }
             SelectionRoundTrip.run()
         }
 
-        if PermissionsHelper.isAccessibilityTrusted() {
-            _ = detector.start()
-        } else {
-            PermissionsHelper.promptForAccessibility()
+        detector.onTapDisabled = { [weak self] in
+            guard let self else { return }
+            if !PermissionsHelper.isAccessibilityTrusted() {
+                self.startPermissionPoller()
+                self.rebuildMenu()
+            }
         }
 
-        NotificationCenter.default.addObserver(
-            self,
-            selector: #selector(appBecameActive),
-            name: NSApplication.didBecomeActiveNotification,
-            object: nil
-        )
+        checkAccessibility()
     }
 
     func applicationWillTerminate(_ notification: Notification) {
+        permissionPoller?.invalidate()
         detector.stop()
     }
 
-    @objc private func appBecameActive() {
-        rebuildMenu()
+    // MARK: - Accessibility
+
+    private func checkAccessibility() {
         if PermissionsHelper.isAccessibilityTrusted() {
+            stopPermissionPoller()
             _ = detector.start()
+        } else {
+            PermissionsHelper.promptForAccessibility()
+            startPermissionPoller()
+        }
+        rebuildMenu()
+    }
+
+    private func startPermissionPoller() {
+        guard permissionPoller == nil else { return }
+        permissionPoller = Timer.scheduledTimer(withTimeInterval: 1.0, repeats: true) { [weak self] _ in
+            Task { @MainActor [weak self] in
+                guard let self else { return }
+                if PermissionsHelper.isAccessibilityTrusted() {
+                    self.stopPermissionPoller()
+                    _ = self.detector.start()
+                    self.rebuildMenu()
+                }
+            }
         }
     }
+
+    private func stopPermissionPoller() {
+        permissionPoller?.invalidate()
+        permissionPoller = nil
+    }
+
+    // MARK: - Status item
 
     private func installStatusItem() {
         statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
@@ -52,38 +78,26 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         let menu = NSMenu()
 
         let trusted = PermissionsHelper.isAccessibilityTrusted()
-        let statusTitle = trusted ? "Machlif: ready" : "Machlif: needs Accessibility"
-        let statusItemEntry = NSMenuItem(title: statusTitle, action: nil, keyEquivalent: "")
-        statusItemEntry.isEnabled = false
-        menu.addItem(statusItemEntry)
+        let statusTitle = trusted ? "Machlif: ready" : "Machlif: waiting for Accessibility…"
+        let info = NSMenuItem(title: statusTitle, action: nil, keyEquivalent: "")
+        info.isEnabled = false
+        menu.addItem(info)
 
         menu.addItem(NSMenuItem.separator())
 
-        let enabledItem = NSMenuItem(
-            title: "Enabled",
-            action: #selector(toggleEnabled),
-            keyEquivalent: ""
-        )
+        let enabledItem = NSMenuItem(title: "Enabled", action: #selector(toggleEnabled), keyEquivalent: "")
         enabledItem.target = self
         enabledItem.state = enabled ? .on : .off
         menu.addItem(enabledItem)
 
         if !trusted {
-            let grant = NSMenuItem(
-                title: "Grant Accessibility…",
-                action: #selector(openAccessibility),
-                keyEquivalent: ""
-            )
+            let grant = NSMenuItem(title: "Grant Accessibility…", action: #selector(openAccessibility), keyEquivalent: "")
             grant.target = self
             menu.addItem(grant)
         }
 
         if #available(macOS 13.0, *) {
-            let login = NSMenuItem(
-                title: "Open at Login",
-                action: #selector(toggleLoginItem),
-                keyEquivalent: ""
-            )
+            let login = NSMenuItem(title: "Open at Login", action: #selector(toggleLoginItem), keyEquivalent: "")
             login.target = self
             login.state = LoginItemHelper.isEnabled ? .on : .off
             menu.addItem(login)
@@ -91,15 +105,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
         menu.addItem(NSMenuItem.separator())
 
-        let quit = NSMenuItem(
-            title: "Quit Machlif",
-            action: #selector(NSApplication.terminate(_:)),
-            keyEquivalent: "q"
-        )
+        let quit = NSMenuItem(title: "Quit Machlif", action: #selector(NSApplication.terminate(_:)), keyEquivalent: "q")
         menu.addItem(quit)
 
         statusItem.menu = menu
     }
+
+    // MARK: - Actions
 
     @objc private func toggleEnabled() {
         enabled.toggle()

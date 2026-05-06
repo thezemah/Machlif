@@ -1,74 +1,75 @@
-import XCTest
+import Testing
 import MachlifCore
 
-final class LayoutConverterTests: XCTestCase {
+@Suite struct LayoutConverterTests {
 
     // MARK: - Hebrew → English
 
-    func testHebrewWordToEnglishGibberish() {
-        // "שלום" typed when English layout was meant produces "akuo"
-        XCTAssertEqual(LayoutConverter.convert("שלום"), "akuo")
+    @Test func hebrewWordToEnglishGibberish() {
+        #expect(LayoutConverter.convert("שלום") == "akuo")
     }
 
-    func testHebrewSentenceToEnglish() {
-        // "יקללם 'םרלג" is "hello world" typed with Hebrew layout active
-        XCTAssertEqual(LayoutConverter.convert("יקללם 'םרלג"), "hello world")
+    @Test func hebrewSentenceToEnglish() {
+        // "יקךךם 'םרךג" is "hello world" typed with Hebrew layout active
+        // ל(lamed)→k, ך(final-kaf)→l per SI-1452 physical key positions
+        #expect(LayoutConverter.convert("יקךךם 'םרךג") == "hello world")
     }
 
-    func testHebrewFinalLetters() {
+    @Test func hebrewFinalLetters() {
         // ך→l  ם→o  ן→i  ף→;  ץ→.
-        XCTAssertEqual(LayoutConverter.convert("ךםןףץ"), "loi;.")
+        #expect(LayoutConverter.convert("ךםןףץ") == "loi;.")
     }
 
     // MARK: - English → Hebrew
 
-    func testEnglishGibberishToHebrewWord() {
-        XCTAssertEqual(LayoutConverter.convert("akuo"), "שלום")
+    @Test func englishGibberishToHebrewWord() {
+        #expect(LayoutConverter.convert("akuo") == "שלום")
     }
 
-    func testEnglishCaseIsFolded() {
+    @Test func englishCaseIsFolded() {
         // Hebrew has no case; uppercase Latin maps to the same Hebrew letter.
-        XCTAssertEqual(LayoutConverter.convert("Akuo"), "שלום")
-        XCTAssertEqual(LayoutConverter.convert("AKUO"), "שלום")
+        #expect(LayoutConverter.convert("Akuo") == "שלום")
+        #expect(LayoutConverter.convert("AKUO") == "שלום")
     }
 
     // MARK: - Pass-through
 
-    func testDigitsAndUnmappedPunctuationPassThrough() {
-        XCTAssertEqual(LayoutConverter.convert("123 456"), "123 456")
+    @Test func digitsAndUnmappedPunctuationPassThrough() {
+        #expect(LayoutConverter.convert("123 456") == "123 456")
     }
 
-    func testEmptyStringIsUnchanged() {
-        XCTAssertEqual(LayoutConverter.convert(""), "")
+    @Test func emptyStringIsUnchanged() {
+        #expect(LayoutConverter.convert("") == "")
     }
 
     // MARK: - Direction detection
 
-    func testDetectionPrefersHebrewWhenMixed() {
-        XCTAssertEqual(LayoutConverter.detectDirection("שלום world"), .hebrewToEnglish)
+    @Test func detectionPrefersHebrewWhenMixed() {
+        // 4 Hebrew letters vs 3 Latin — Hebrew majority → hebrewToEnglish
+        #expect(LayoutConverter.detectDirection("שלום wor") == .hebrewToEnglish)
     }
 
-    func testDetectionPrefersEnglishWhenMostlyLatin() {
-        XCTAssertEqual(LayoutConverter.detectDirection("hello ש"), .englishToHebrew)
+    @Test func detectionPrefersEnglishWhenMostlyLatin() {
+        #expect(LayoutConverter.detectDirection("hello ש") == .englishToHebrew)
     }
 
-    func testDetectionNoneForDigitsOnly() {
-        XCTAssertEqual(LayoutConverter.detectDirection("12345"), .none)
+    @Test func detectionNoneForDigitsOnly() {
+        #expect(LayoutConverter.detectDirection("12345") == .none)
     }
 
     // MARK: - Round-trip
 
-    func testHebrewRoundTrip() {
+    @Test func hebrewRoundTrip() {
         let original = "שלום"
         let once = LayoutConverter.convert(original)
         let twice = LayoutConverter.convert(once)
-        XCTAssertEqual(twice, original)
+        #expect(twice == original)
     }
 
-    func testEnglishLowercaseRoundTrip() {
+    @Test func englishLowercaseRoundTrip() {
         let original = "akuo"
         let once = LayoutConverter.convert(original)
         let twice = LayoutConverter.convert(once)
-        XCTAssertEqual(twice, original)
+        #expect(twice == original)
     }
 }
