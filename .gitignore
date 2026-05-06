@@ -1,0 +1,16 @@
+# Build outputs
+.build/
+.swiftpm/
+*.xcodeproj/
+DerivedData/
+Packages/
+Package.resolved
+
+# macOS
+.DS_Store
+
+# Editor
+*.swp
+*~
+.idea/
+.vscode/
