@@ -36,29 +36,29 @@ public enum LayoutConverter {
     }()
 
     public static func detectDirection(_ s: String) -> ConversionDirection {
-        var hebrewCount = 0
+        var nonLatinCount = 0
         var latinCount = 0
         for ch in s {
             if let scalar = ch.unicodeScalars.first {
-                if (0x0590...0x05FF).contains(scalar.value) {
-                    hebrewCount += 1
+                if scalar.value > 0x024F {
+                    nonLatinCount += 1
                 } else if ch.isLetter && ch.isASCII {
                     latinCount += 1
                 }
             }
         }
-        if hebrewCount == 0 && latinCount == 0 { return .none }
-        return hebrewCount >= latinCount ? .hebrewToEnglish : .englishToHebrew
+        if nonLatinCount == 0 && latinCount == 0 { return .none }
+        return nonLatinCount >= latinCount ? .hebrewToEnglish : .englishToHebrew
     }
 
     public static func convert(_ s: String) -> String {
-        convert(s, hebrewToEnglish: hebrewToEnglishMap, englishToHebrew: englishToHebrewMap)
+        convert(s, toEnglish: hebrewToEnglishMap, fromEnglish: englishToHebrewMap)
     }
 
     public static func convert(
         _ s: String,
-        hebrewToEnglish h2e: [Character: Character],
-        englishToHebrew e2h: [Character: Character]
+        toEnglish h2e: [Character: Character],
+        fromEnglish e2h: [Character: Character]
     ) -> String {
         switch detectDirection(s) {
         case .hebrewToEnglish: return apply(map: h2e, to: s)

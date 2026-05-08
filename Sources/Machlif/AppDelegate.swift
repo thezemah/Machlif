@@ -4,14 +4,18 @@ import Cocoa
 final class AppDelegate: NSObject, NSApplicationDelegate {
 
     private var statusItem: NSStatusItem!
-    private let detector = ShiftDoubleTapDetector()
+    private let detector = TriggerDetector()
     private var enabled = true
     private var permissionPoller: Timer?
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         installStatusItem()
 
-        detector.onDoubleTap = { [weak self] in
+        detector.maxInterval = LanguagePreferences.doubleTapInterval
+        NotificationCenter.default.addObserver(self, selector: #selector(preferencesChanged),
+                                               name: .preferencesChanged, object: nil)
+
+        detector.onTrigger = { [weak self] in
             guard let self, self.enabled else { return }
             SelectionRoundTrip.run()
         }
@@ -103,6 +107,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             menu.addItem(login)
         }
 
+        let prefs = NSMenuItem(title: "Preferences…", action: #selector(openPreferences), keyEquivalent: ",")
+        prefs.target = self
+        menu.addItem(prefs)
+
         menu.addItem(NSMenuItem.separator())
 
         let quit = NSMenuItem(title: "Quit Machlif", action: #selector(NSApplication.terminate(_:)), keyEquivalent: "q")
@@ -126,5 +134,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         guard #available(macOS 13.0, *) else { return }
         _ = LoginItemHelper.setEnabled(!LoginItemHelper.isEnabled)
         rebuildMenu()
+    }
+
+    @objc private func openPreferences() {
+        PreferencesWindowController.shared.show()
+    }
+
+    @objc private func preferencesChanged() {
+        detector.maxInterval = LanguagePreferences.doubleTapInterval
+        detector.config = LanguagePreferences.triggerConfig
     }
 }

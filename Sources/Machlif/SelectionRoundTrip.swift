@@ -19,8 +19,8 @@ enum SelectionRoundTrip {
         }
 
         let converted: String
-        if let maps = HebrewLayoutDetector.bestMaps(for: copied) {
-            converted = LayoutConverter.convert(copied, hebrewToEnglish: maps.hebrewToEnglish, englishToHebrew: maps.englishToHebrew)
+        if let maps = KeyboardLayoutDetector.bestMaps(for: copied, enabledLayoutIDs: LanguagePreferences.enabledLayoutIDs) {
+            converted = LayoutConverter.convert(copied, toEnglish: maps.toEnglish, fromEnglish: maps.fromEnglish)
         } else {
             converted = LayoutConverter.convert(copied)
         }

@@ -1,19 +1,21 @@
 import Cocoa
-import CoreGraphics
+@preconcurrency import CoreGraphics
 
 @MainActor
-final class ShiftDoubleTapDetector {
+final class TriggerDetector {
 
-    var onDoubleTap: (() -> Void)?
+    var onTrigger: (() -> Void)?
     var onTapDisabled: (() -> Void)?
     var maxInterval: CFTimeInterval = 0.4
+    var config: TriggerConfig = LanguagePreferences.triggerConfig
 
     private var eventTap: CFMachPort?
     private var runLoopSource: CFRunLoopSource?
 
-    private var lastShiftDownAt: CFTimeInterval = 0
-    private var shiftIsDown = false
-    private var otherKeyPressedSinceLastShift = false
+    // Double-tap state
+    private var lastModDownAt: CFTimeInterval = 0
+    private var modIsDown = false
+    private var otherKeyPressed = false
 
     func start() -> Bool {
         guard eventTap == nil else { return true }
@@ -25,11 +27,9 @@ final class ShiftDoubleTapDetector {
         let selfPtr = Unmanaged.passUnretained(self).toOpaque()
 
         let callback: CGEventTapCallBack = { _, type, event, refcon in
-            guard let refcon = refcon else { return Unmanaged.passUnretained(event) }
-            let detector = Unmanaged<ShiftDoubleTapDetector>.fromOpaque(refcon).takeUnretainedValue()
-            // The run loop source is added to the main run loop, so this callback
-            // always fires on the main thread — assumeIsolated is safe here.
-            MainActor.assumeIsolated { detector.handle(type: type, event: event) }
+            guard let refcon else { return Unmanaged.passUnretained(event) }
+            let det = Unmanaged<TriggerDetector>.fromOpaque(refcon).takeUnretainedValue()
+            MainActor.assumeIsolated { det.handle(type: type, event: event) }
             return Unmanaged.passUnretained(event)
         }
 
@@ -40,9 +40,7 @@ final class ShiftDoubleTapDetector {
             eventsOfInterest: mask,
             callback: callback,
             userInfo: selfPtr
-        ) else {
-            return false
-        }
+        ) else { return false }
 
         let source = CFMachPortCreateRunLoopSource(kCFAllocatorDefault, tap, 0)
         CFRunLoopAddSource(CFRunLoopGetMain(), source, .commonModes)
@@ -54,55 +52,72 @@ final class ShiftDoubleTapDetector {
     }
 
     func stop() {
-        if let tap = eventTap {
-            CGEvent.tapEnable(tap: tap, enable: false)
-        }
-        if let source = runLoopSource {
-            CFRunLoopRemoveSource(CFRunLoopGetMain(), source, .commonModes)
-        }
+        if let tap = eventTap { CGEvent.tapEnable(tap: tap, enable: false) }
+        if let src = runLoopSource { CFRunLoopRemoveSource(CFRunLoopGetMain(), src, .commonModes) }
         eventTap = nil
         runLoopSource = nil
     }
 
     private func handle(type: CGEventType, event: CGEvent) {
-        // kCGEventTapDisabledByTimeout = 0xFFFFFFFE, kCGEventTapDisabledByUserInput = 0xFFFFFFFF
         if type.rawValue >= 0xFFFFFFFE {
-            if let tap = eventTap {
-                CGEvent.tapEnable(tap: tap, enable: true)
-            }
+            if let tap = eventTap { CGEvent.tapEnable(tap: tap, enable: true) }
             onTapDisabled?()
             return
         }
 
+        switch config.mode {
+        case .doubleTap:
+            handleDoubleTap(type: type, event: event)
+        case .hotkey:
+            handleHotkey(type: type, event: event)
+        }
+    }
+
+    // MARK: - Double-tap
+
+    private func handleDoubleTap(type: CGEventType, event: CGEvent) {
         switch type {
         case .flagsChanged:
             let keyCode = event.getIntegerValueField(.keyboardEventKeycode)
-            // kVK_Shift = 56, kVK_RightShift = 60
-            guard keyCode == 56 || keyCode == 60 else { return }
+            guard config.doubleTapModifier.keyCodes.contains(keyCode) else { return }
 
-            let flags = event.flags
-            let nowDown = flags.contains(.maskShift)
+            let isDown = event.flags.contains(config.doubleTapModifier.eventFlag)
 
-            if nowDown && !shiftIsDown {
+            if isDown && !modIsDown {
                 let now = CACurrentMediaTime()
-                let interval = now - lastShiftDownAt
-                if interval > 0 && interval <= maxInterval && !otherKeyPressedSinceLastShift {
-                    lastShiftDownAt = 0
-                    shiftIsDown = nowDown
-                    otherKeyPressedSinceLastShift = false
-                    onDoubleTap?()
+                let interval = now - lastModDownAt
+                if interval > 0 && interval <= maxInterval && !otherKeyPressed {
+                    lastModDownAt = 0
+                    modIsDown = isDown
+                    otherKeyPressed = false
+                    onTrigger?()
                     return
                 }
-                lastShiftDownAt = now
-                otherKeyPressedSinceLastShift = false
+                lastModDownAt = now
+                otherKeyPressed = false
             }
-            shiftIsDown = nowDown
+            modIsDown = isDown
 
         case .keyDown:
-            otherKeyPressedSinceLastShift = true
+            otherKeyPressed = true
 
         default:
             break
         }
+    }
+
+    // MARK: - Hotkey (listen-only — event also reaches other apps)
+
+    private func handleHotkey(type: CGEventType, event: CGEvent) {
+        guard type == .keyDown else { return }
+
+        let keyCode = UInt16(event.getIntegerValueField(.keyboardEventKeycode))
+        guard keyCode == config.hotkeyKeyCode else { return }
+
+        let targetFlags = CGEventFlags(rawValue: config.hotkeyModifierFlags)
+        let modMask: CGEventFlags = [.maskShift, .maskAlternate, .maskCommand, .maskControl]
+        guard event.flags.intersection(modMask) == targetFlags.intersection(modMask) else { return }
+
+        onTrigger?()
     }
 }
