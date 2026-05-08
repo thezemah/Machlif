@@ -1,69 +1,111 @@
-# Machlif (מחליף)
+# Machlif — מחליף
 
-A tiny macOS menu-bar utility that converts text between Hebrew and English keyboard layouts.
+> **Hebrew** *makh-LEEF* · "switcher / replacer"
 
-If you ever started typing in the wrong layout — `שלום` came out as `akuo`, or `hello` came out as `יקללם` — select the offending text and **double-tap Shift**. Machlif replaces the selection with what the same physical keys would have produced under the other layout. Direction is auto-detected.
+A tiny macOS menu-bar app that fixes text typed in the wrong keyboard layout — instantly.
 
-## Requirements
+**[⬇ Download v1.2](https://github.com/thezemah/Machlif/releases/latest)** &nbsp;·&nbsp; **[Website](https://thezemah.github.io/Machlif)**
 
-- macOS 13 (Ventura) or later
-- Xcode command-line tools (`xcode-select --install`) — Xcode itself is not required
+---
 
-## Build & run
+## What it does
+
+Ever started typing in the wrong layout?
+
+```
+Typed with Hebrew layout active:   שלום חברים
+Wanted:                            akuo jarum
+```
+
+Select the broken text, **double-tap Shift**, and Machlif replaces it with what you meant to type. Direction is auto-detected — it works both ways.
+
+Works with **any non-Latin keyboard layout** installed on your Mac: Hebrew, Arabic, Cyrillic, Greek, and more. Layout maps are built at runtime from the system's keyboard data — no hard-coded character tables.
+
+---
+
+## Install
+
+1. Download **Machlif-1.2.dmg** from the [latest release](https://github.com/thezemah/Machlif/releases/latest).
+2. Open the DMG → drag **Machlif** to **Applications**.
+3. Launch Machlif — macOS will prompt for **Accessibility** permission. Grant it.
+
+The **מ** icon appears in your menu bar. That's it.
+
+---
+
+## Usage
+
+| Step | Action |
+|------|--------|
+| 1 | Select the text you want to fix |
+| 2 | Double-tap **Shift** (default trigger) |
+| 3 | The selection is replaced in place |
+
+Your clipboard is silently restored after conversion.
+
+### Preferences (⌘,)
+
+Open from the menu-bar icon:
+
+- **Trigger** — double-tap any modifier key (Shift, Option, Command, Control) or record a custom keyboard shortcut
+- **Keyboard Layouts** — toggle which installed non-Latin layouts participate in conversion
+- **Double-tap Speed** — tune the detection window (0.15 s – 0.7 s)
+
+---
+
+## Build from source
+
+Requires Xcode command-line tools (`xcode-select --install`). Xcode itself is not needed.
 
 ```sh
-make run        # build, bundle into .app, and launch
-make install    # copy Machlif.app to /Applications
+make run        # build + launch
+make install    # copy to /Applications
+make dmg        # build distributable DMG
 make test       # run unit tests
 make clean
 ```
 
-Or open `Package.swift` in Xcode and Run from there.
+---
 
-## First launch
+## How it works
 
-macOS will ask for **Accessibility** permission — Machlif needs it to read modifier-key events and to synthesize the ⌘C/⌘V keystrokes that capture and replace your selection. After granting it, quit and relaunch the app.
+1. A **CGEventTap** on the main run loop watches for the configured trigger (default: Shift double-tap).
+2. On trigger: `⌘C` copies the selection → direction is detected by counting non-Latin vs Latin characters → the best-matching installed layout's character map is applied → `⌘V` pastes the result.
+3. Layout maps are built via **TIS** (Text Input Services) + **UCKeyTranslate** — same data macOS uses internally.
+4. The original clipboard is restored 300 ms later.
 
-If the permission dialog never appeared, open *System Settings → Privacy & Security → Accessibility* and add `Machlif.app` manually, or use the **Grant Accessibility…** item in the menu-bar dropdown.
+---
 
-## Usage
+## Requirements
 
-1. Select the text you want to convert.
-2. Press **Shift twice quickly** (within 0.4 s, no other key in between).
-3. The selection is replaced with the converted text. Your clipboard is restored a moment later.
+- macOS 13 Ventura or later
+- Accessibility permission (prompted on first launch)
 
-The menu-bar icon is the Hebrew letter **מ**. From the dropdown:
-
-- **Enabled** — toggles the double-tap handler without quitting.
-- **Open at Login** — registers the app with `SMAppService` (macOS 13+).
-- **Quit Machlif**.
-
-## Layout
-
-The mapping follows the Israeli SI-1452 Hebrew layout aligned to US QWERTY by physical key position:
-
-| Top row | Home row | Bottom row |
-|---|---|---|
-| ק→e ר→r א→t ט→y ו→u ן→i ם→o פ→p | ש→a ד→s ג→d כ→f ע→g י→h ח→j ל→k ך→l ף→; | ז→z ס→x ב→c ה→v נ→b מ→n צ→m ת→, ץ→. |
-
-Plus `/`↔`q` and `'`↔`w`. Digits, spaces, and unmapped punctuation pass through unchanged. Uppercase Latin letters fold to the same Hebrew letter (Hebrew has no case).
+---
 
 ## Project layout
 
 ```
 Sources/
-├── MachlifCore/          # pure logic — no AppKit
-│   └── LayoutConverter.swift
-└── Machlif/              # menu-bar app — AppKit, CGEventTap, Accessibility
-    ├── MachlifApp.swift
+├── MachlifCore/
+│   └── LayoutConverter.swift          # direction detection + char map logic
+└── Machlif/
     ├── AppDelegate.swift
-    ├── ShiftDoubleTapDetector.swift
-    ├── SelectionRoundTrip.swift
+    ├── ShiftDoubleTapDetector.swift   # TriggerDetector — event tap
+    ├── SelectionRoundTrip.swift       # ⌘C → convert → ⌘V
+    ├── KeyboardLayoutDetector.swift   # TIS/UCKeyTranslate map builder
+    ├── LanguagePreferences.swift      # UserDefaults + TriggerConfig model
+    ├── PreferencesView.swift          # SwiftUI preferences UI
+    ├── PreferencesWindowController.swift
+    ├── ShortcutRecorderView.swift     # hotkey recorder (NSViewRepresentable)
     ├── PermissionsHelper.swift
     └── LoginItemHelper.swift
 Tests/MachlifTests/
 └── LayoutConverterTests.swift
-Resources/
-├── Info.plist            # bundled into Machlif.app/Contents/
-└── Machlif.entitlements
 ```
+
+---
+
+## License
+
+Personal use. Pull requests welcome.
